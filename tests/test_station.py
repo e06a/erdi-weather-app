@@ -1,137 +1,118 @@
-import pytest
 import json
-from unittest.mock import Mock, patch, MagicMock
-import sys
-import os
+import time
+import random
+import pytest
+from unittest.mock import patch, MagicMock
 
 
+class TestWeatherData:
+    """Tests für generierte Wetterdaten"""
 
-class TestWeatherStationLogic:
-    """Tests für die Wetterstation-Logik"""
-    
-    def test_temperature_range(self):
-        """Teste dass Temperatur im erwarteten Bereich ist"""
-        import random
-        random.seed(42)
-        
-        for _ in range(100):
-            temp = round(random.uniform(15, 30), 1)
-            assert 15 <= temp <= 30, f"Temperatur {temp} außerhalb des Bereichs"
-    
-    def test_humidity_range(self):
-        """Teste dass Luftfeuchtigkeit im erwarteten Bereich ist"""
-        import random
-        random.seed(42)
-        
-        for _ in range(100):
-            humidity = round(random.uniform(30, 60), 1)
-            assert 30 <= humidity <= 60, f"Luftfeuchtigkeit {humidity} außerhalb des Bereichs"
-    
-    def test_sensor_error_value(self):
-        """Teste dass Sensorfehler korrekt als -999 dargestellt wird"""
-        sensor_error_temp = -999
-        assert sensor_error_temp == -999, "Sensorfehler-Wert stimmt nicht"
-    
-    def test_json_data_structure(self):
-        """Teste dass die Datenstruktur korrekt ist"""
-        import time
-        
-        data = {
+    def test_temperature_is_within_bounds(self):
+        random.seed(123)
+
+        values = [round(random.uniform(15, 30), 1) for _ in range(100)]
+
+        for value in values:
+            assert 15 <= value <= 30
+
+    def test_humidity_is_within_bounds(self):
+        random.seed(123)
+
+        values = [round(random.uniform(30, 60), 1) for _ in range(100)]
+
+        for value in values:
+            assert 30 <= value <= 60
+
+    def test_sensor_error_constant(self):
+        ERROR_VALUE = -999
+        assert ERROR_VALUE == -999
+
+
+class TestWeatherPayload:
+    """Tests für Datenformat und Serialisierung"""
+
+    def _create_sample_payload(self):
+        return {
             "stationId": "WS-TEST",
             "temperature": 22.5,
             "humidity": 45.3,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         }
-        
-        assert "stationId" in data
-        assert "temperature" in data
-        assert "humidity" in data
-        assert "timestamp" in data
-        
-        assert isinstance(data["stationId"], str)
-        assert isinstance(data["temperature"], (int, float))
-        assert isinstance(data["humidity"], (int, float))
-        assert isinstance(data["timestamp"], str)
-    
-    def test_json_serialization(self):
-        """Teste dass Daten als JSON serialisiert werden können"""
-        import time
-        
-        data = {
-            "stationId": "WS-TEST",
-            "temperature": 22.5,
-            "humidity": 45.3,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        }
-        
-        json_str = json.dumps(data)
-        assert isinstance(json_str, str)
-        
-        data_back = json.loads(json_str)
-        assert data_back == data
+
+    def test_payload_contains_required_fields(self):
+        payload = self._create_sample_payload()
+
+        required_keys = {"stationId", "temperature", "humidity", "timestamp"}
+        assert required_keys.issubset(payload.keys())
+
+    def test_payload_field_types(self):
+        payload = self._create_sample_payload()
+
+        assert isinstance(payload["stationId"], str)
+        assert isinstance(payload["temperature"], (int, float))
+        assert isinstance(payload["humidity"], (int, float))
+        assert isinstance(payload["timestamp"], str)
+
+    def test_payload_can_be_serialized_to_json(self):
+        payload = self._create_sample_payload()
+
+        encoded = json.dumps(payload)
+        decoded = json.loads(encoded)
+
+        assert decoded == payload
 
 
-class TestStationConfiguration:
-    """Tests für die Stations-Konfiguration"""
-    
-    def test_station_id_format(self):
-        """Teste dass Station ID das richtige Format hat"""
-        station_ids = ["WS-01", "WS-02", "WS-03", "WS-XX"]
-        
-        for station_id in station_ids:
-            assert station_id.startswith("WS-"), f"Station ID {station_id} hat falsches Präfix"
-            assert len(station_id) == 5, f"Station ID {station_id} hat falsche Länge"
-    
-    def test_interval_values(self):
-        """Teste dass Intervalle positive Zahlen sind"""
-        intervals = [3, 5, 7]
-        
-        for interval in intervals:
-            assert interval > 0, f"Intervall {interval} muss positiv sein"
-            assert isinstance(interval, int), f"Intervall {interval} muss Integer sein"
+class TestStationSettings:
+    """Tests für Stationsparameter"""
+
+    @pytest.mark.parametrize("station_id", ["WS-01", "WS-02", "WS-XX"])
+    def test_station_id_structure(self, station_id):
+        assert station_id.startswith("WS-")
+        assert len(station_id) == 5
+
+    @pytest.mark.parametrize("interval", [3, 5, 7])
+    def test_intervals_are_valid(self, interval):
+        assert isinstance(interval, int)
+        assert interval > 0
 
 
-class TestMQTTConfiguration:
-    """Tests für MQTT-Konfiguration"""
-    
-    def test_mqtt_topic(self):
-        """Teste dass MQTT Topic korrekt ist"""
+class TestMQTTSettings:
+    """Tests für MQTT Basiskonfiguration"""
+
+    def test_default_topic(self):
         topic = "weather"
-        assert topic == "weather", "MQTT Topic sollte 'weather' sein"
-        assert len(topic) > 0, "MQTT Topic darf nicht leer sein"
-    
-    def test_mqtt_port(self):
-        """Teste dass MQTT Port gültig ist"""
+        assert topic
+        assert topic == "weather"
+
+    def test_default_port(self):
         port = 1883
-        assert port == 1883, "MQTT Port sollte 1883 sein"
-        assert 1 <= port <= 65535, "MQTT Port muss im gültigen Bereich sein"
+        assert 1 <= port <= 65535
+        assert port == 1883
 
 
 @pytest.mark.integration
-class TestStationIntegration:
-    """Integrationstests (werden mit MQTT Mock durchgeführt)"""
-    
-    @patch('paho.mqtt.client.Client')
-    def test_mqtt_client_creation(self, mock_mqtt):
-        """Teste dass MQTT Client erstellt werden kann"""
-        mock_client = MagicMock()
-        mock_mqtt.return_value = mock_client
-        
+class TestMQTTIntegration:
+    """Integrationstests mit gemocktem MQTT Client"""
+
+    @patch("paho.mqtt.client.Client")
+    def test_mqtt_client_initialization(self, mock_client_class):
+        mock_client_class.return_value = MagicMock()
+
         import paho.mqtt.client as mqtt
         client = mqtt.Client()
-        
+
         assert client is not None
-    
-    @patch('paho.mqtt.client.Client')
-    def test_mqtt_publish(self, mock_mqtt):
-        """Teste dass Nachrichten publiziert werden können"""
+
+    @patch("paho.mqtt.client.Client")
+    def test_mqtt_publish_call(self, mock_client_class):
         mock_client = MagicMock()
-        mock_mqtt.return_value = mock_client
-        
+        mock_client_class.return_value = mock_client
+
         import paho.mqtt.client as mqtt
         client = mqtt.Client()
-        
-        test_data = {"test": "data"}
-        client.publish("weather", json.dumps(test_data))
-        
+
+        payload = {"key": "value"}
+        client.publish("weather", json.dumps(payload))
+
         mock_client.publish.assert_called_once()
